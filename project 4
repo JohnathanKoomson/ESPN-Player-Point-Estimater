@@ -1,0 +1,98 @@
+import pandas as pd
+import requests
+import numpy as np
+import time
+from bs4 import BeautifulSoup
+import openpyxl #Module for creating exel files
+from openpyxl.workbook import Workbook
+from openpyxl import load_workbook
+#import urllib.request
+import sys #grab command line arguments
+pd.set_option('display.max_columns',None)
+#I dont know how to shorten lines, so some comments you might have to scroll to see
+"""
+#Creates Espn HTML file
+Data = urllib.request.urlopen("https://www.espn.com/nba/stats/player/_/season/2023/seasontype/2")
+charset = Data.headers.get_content_charset()
+HTML = Data.read().decode(charset)
+File = open ("sourcecode.html", "w")
+File.write(HTML)
+File.close()
+"""
+"""
+#Pull data using beutiful soup
+File = open("sourcecode.html", "r")
+Doc = BeautifulSoup(File, "html.parser")
+print(Doc.prettify())
+"""
+
+my_url = 'https://stats.nba.com/stats/leagueLeaders?LeagueID=00&PerMode=PerGame&Scope=S&Season=2023-24&SeasonType=Regular%20Season&StatCategory=PTS'
+r = requests.get(url = my_url).json()
+table_headers = (r['resultSet']['headers'])
+#print(pd.DataFrame(r['resultSet']['rowSet'], columns = table_headers))
+temp_df1 = pd.DataFrame(r['resultSet']['rowSet'], columns = table_headers)
+temp_df2 = pd.DataFrame({'Year':['2022-23' for i in range(len(temp_df1))], 'Season_type':['Regular%20Season' for i in range(len(temp_df1))]})
+temp_df3 = pd.concat([temp_df2,temp_df1], axis=1)
+#print(temp_df3)
+df_cols = ['Year','Season_type'] + table_headers
+#print(pd.DataFrame(columns=df_cols))
+
+del temp_df1, temp_df2, temp_df3 #deletes the temporary test lines because they were overriding my data in exel
+df_cols = ['Year','Season_type'] + table_headers
+
+#Is here so the website doesn't disable me from pulling too much data due to NBA's website bot detection, I'm only doing three seasons but if you wanted to do more then this will help
+begin_loop = time.time()
+df = pd.DataFrame(columns=df_cols)
+season_types = ['Regular%20Season', 'Playoffs']
+years = ['2021-22','2022-23','2023-24'] #The three seasons I will loop through, these will be put into the api_url
+for y in years:
+    for s in season_types:
+        api_url = 'https://stats.nba.com/stats/leagueLeaders?LeagueID=00&PerMode=PerGame&Scope=S&Season='+y+'&SeasonType='+s+'&StatCategory=PTS' #The y is the year and the s is the season
+        r = requests.get(url = api_url,).json()
+        temp_df1 = pd.DataFrame(r['resultSet']['rowSet'], columns = table_headers)
+        temp_df2 = pd.DataFrame({'Year':[y for i in range(len(temp_df1))], 'Season_type':[s for i in range(len(temp_df1))]})
+        temp_df3 = pd.concat([temp_df2,temp_df1], axis=1) #row
+        df = pd.concat([df, temp_df3], axis=0) #index
+        print(f'Finished scraping data for the {y} {s}')
+        #Slow down the loop after each scrape by a random time, to avoid bot detection
+        lag = np.random.uniform(1,3)
+        print(f'...waiting{round(lag,1)} seconds')
+        time.sleep(lag)
+print(f'Process completed! Total run tume: {round((time.time()-begin_loop)/60,2)}')
+df.to_excel('nba_player_data.xlsx', index=False) #puts all of website's data we just grabbed into xlsx file
+
+#excel stuff
+wb = openpyxl.load_workbook('nba_player_data.xlsx')
+ws = wb.active
+
+# Asks the Mr.Shulman for the player's name
+player_name = input("Enter the player's name: ")
+
+total_points = 0
+
+#This checks is the player's name was found
+found = False
+
+
+for row in ws.iter_rows(min_row=2): 
+    try:
+        # Checks if the player's name in column E in exel is there
+        if row[4].value == player_name:
+            # If it matches, add the points from column 'Z' to the total
+            total_points += row[25].value
+            avg_score = round(total_points/6,2)
+            found = True
+    except Exception as e:
+        print(f"ERROR: {e}")
+        break
+if found:
+    print(f'In the next season, expect {player_name} to score around: {avg_score} points!')
+else:
+    print(f"No data found for: {player_name}. Make sure they played recently and use their first and last names with proper spelling.")
+
+
+
+
+
+
+
